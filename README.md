@@ -1,5 +1,5 @@
 # Image-Analysis
-MATLAB code for analyzing microscopic images using multiple channels along with U-net, PIC, ResNet.
+MATLAB code for analyzing microscopic images using multiple channels with ResNet (U-Net & PCA are additional).
 
 ## Overview
 This repository contains MATLAB scripts for:
@@ -17,4 +17,14 @@ The code integrates convolution-based preprocessing, watershed segmentation, and
 - Export selected images (processed) and summary data to Excel
 
 ## Workflow
+1. ** Image Separation **
+- Microscopic image (.tiff): slices (red, green, blue, and phase / bright-field) are separated by ImageJ / Fiji
+- Store separated images in each folder
+2. ** Image Prepeocessing **
+- Contrast enhancement and noise filtering (bright-field)
+- Edge detection (convolution)
+- Create masks for each channel (red, green, blue, bright-field)
+3. ** Image Selection / segmentation **
+- Isolated single cell image: selection by blue channel
+- Aggregated cell images: segmentation by watershed (blue & bright-filed masks)
 - 
