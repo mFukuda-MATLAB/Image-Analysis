@@ -1,39 +1,66 @@
-%% =========================================================================
+% =========================================================================
+% His/DNA + LysoView Segmentation & Measurement (with PAH–AF594)
 %
-% His/DNA +LysoView Segmentation and Measurement (with PAH-AF594)
+% Purpose:
+%   Segment single-cell ROIs (BF + DAPI), detect His/DNA microparticles
+%   labeled with PAH–AF594 (TRITC/Red), and quantify LysoView (FITC/Green)
+%   fluorescence both in the phagosome and the surrounding cytosol. The
+%   script also performs an empirical null test (random cytosolic ROIs)
+%   to assess enrichment of LysoView signal in phagosomes.
 %
-% Mask images:
-%       Binary segmentation masks generated from brightfield (cell boundary),
-%       DAPI (nucleus), and FITC (particle) channels.
-%       These masks are used to identify ROIs and classify cells into
-%       single-particle, multi-particle, or no-particle categories.
+% Pipeline Overview:
+%   1) Load per-sample channels: Phase (BF), DAPI (Blue), LysoView (FITC/Green), PAH–AF594 (TRITC/Red).
+%   2) Build BF-based cell masks and refine with DAPI nuclei (single-nucleus gating).
+%   3) Build particle masks from TRITC (Gaussian → adaptive threshold → hole fill → watershed cleanup).
+%   4) Keep cells with exactly one particle (QC by area and circularity).
+%   5) Create a phagosome mask (particle) and a cytosol mask (cell minus dilated particle).
+%   6) Measure Green (LysoView) and Red intensities within phagosomes; measure Green in cytosol.
+%   7) Empirical null test: draw 1,000 same-area circular ROIs randomly in cytosol (excluding nucleus),
+%      compute their mean Green intensity distribution, and report percentile & one-tailed p-value.
+%   8) Aggregate per-cell metrics; write per-sample and cross-sample summaries to Excel.
 %
-% File inputs: (decomposed TIFF images into separate channels using ImageJ)
-%       FITC images  (8 bit tifs with format ParticleType_##.tif)
-%       DAPI images  (8 bit tifs with format ParticleType_##.tif)
-%       Phase (Bright Field) images (8 bit tifs with format ParticleType_##.tif)
+% Inputs (8-bit TIFFs; pre-split by ImageJ/Fiji):
+%   - Phase (Brightfield) : ParticleType_##.tif
+%   - DAPI (Blue)         : ParticleType_##.tif  (nucleus)
+%   - FITC (Green)        : ParticleType_##.tif  (LysoView)
+%   - TRITC (Red)         : ParticleType_##.tif  (PAH–AF594 particle)
+%   Directory layout: <Sample>/{Phase, Blue, Green, Red}
 %
-% ResNet Training: (3-classification model)
-%       The model was trained on cell images containing PNIPAM-DNA-DiYO-1
-%       particles. Each cell image was classified into one of three
-%       categories: single-particle, nulti-particle, or no-particle.
-%       Data augmentation (rotation, scaling, reflection) was applied 
-%       to improve model robustness.
+% Outputs:
+%   - (Optional, if lines are uncommented) Per-cell crops:
+%       • Single Cells (BF), Single Cells (Green), Single Cells (Red)
+%       • Single Cells (Cytosol)  [Green image masked to cytosol]
+%   - Master Excel workbook (Master_Analysis_Results06.xlsx) with sheets:
+%       • "Measurement_Data": per-cell metrics (sample, image/cell idx,
+%            RedMask area & circularity, Green/Red stats in phagosome,
+%            Green stats in cytosol, null-test percentile & p-value;
+%            optional expansion of all 1,000 null means as columns)
+%       • "Null_Distributions": long-form table of all null means
+%       • "Summary_Stats": per-sample mean percentile and mean p-value
 %
-% File outputs:
-%       1) Segmented cell images classified into three categories 
-%       (Single-particle, Multi-particle, No-particle), stored in 
-%       designated folders.
-%       2) Trained 3-class ResNet model (.mat file).
-%       3) Validation results including accuracy/loss plots and 
-%       confusion matrix.
+% Key Parameters (mirroring code):
+%   - BF mask: Sobel edges + bilateral filtering + morphology + active contour refinement
+%   - DAPI mask: Gaussian smoothing + edge/threshold + morphology (single nucleus)
+%   - TRITC mask (particle): Gaussian blur → adaptive threshold → fill → watershed
+%   - Particle QC: area ≈ 450 px² ± 30%, circularity ≥ 0.85
+%   - Dilation: particle mask dilated by 40% of equivalent radius (for cytosol exclusion)
+%   - Null test: N = 1000 circular ROIs in cytosol with area matched to phagosome;
+%                percentile = fraction of null means < true phagosome mean;
+%                p-value (one-tailed) = (100 − percentile)/100
+%
+% Notes:
+%   - Border-touching cells are filtered via boundary-fraction heuristic.
+%   - Background (Green) is estimated from the image border median (computed; not subtracted by default).
+%   - Stores per-cell null means both embedded (cell array) and expanded (optional) for Excel.
 %
 % Requirements:
-%       MATLAB R2023a or later
-%       Image Processing Toolbox
-%       ImageJ/Fiji (for initial channel decomposition into TIFF images)
+%   - MATLAB R2023a or later
+%   - Image Processing Toolbox
+%   - ImageJ/Fiji (for channel decomposition)
 %
-% ==========================================================================
+% Reproducibility (recommended):
+%   - rng(42,'twister'); record MATLAB version, GPU, and CUDA details
+% =========================================================================
 
 clc; clear; warning('off','all'); close all
 
