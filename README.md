@@ -13,6 +13,17 @@ This repository contains MATLAB scripts for:
 The code integrates convolution-based preprocessing, watershed segmentation, and ResNet classification to quantify fluorescence signals and particle uptake in macrophage images.  
 U-Net and PCA modules are included as additional tools for image analysis.
 
+Each script in this repository performs a specific image-analysis task, from classification to fluorescence quantification.
+
+| File | Description |
+|------|--------------|
+| `LysoView_Distribution.m` | Analyzes LysoView fluorescence intensity distribution across phagosomes and cytosol. |
+| `PNI_DNA_ResNet_SingleParticle_final04.m` | Classifies single-particle-containing cells using a trained ResNet model (PNIPAM-DNA dataset). |
+| `Sample_IsolatedCell_AF488.m` | Processes isolated-cell images containing AF488-labeled histone fluorescence for intensity measurement. |
+| `Sample_IsolatedCell_LysoView_final.m` | Measures LysoView fluorescence in isolated cells to quantify phagosomal acidification. |
+| `Sample_IsolatedCell_PAH_AF594.m` | Analyzes red AF594 fluorescence from PAH-conjugated PNIPAM microparticles in isolated cells. |
+| `Sample_IsolatedCell_ResNet_final_cleaned.m` | Runs the cleaned and consolidated ResNet pipeline for isolated-cell classification and visualization. |
+
 ---
 
 ## 🧬 Fluorescence Channels
