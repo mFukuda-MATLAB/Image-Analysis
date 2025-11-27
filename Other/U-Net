@@ -1,0 +1,240 @@
+%% Apply Trained U-Net to New Images
+
+clc; clear; warning('off','all'); close all;
+
+% Path
+BFinitial_path = 'D:/Image Process DNA/U_Net/Patched Image Segmentation/Original BF Images';
+Model_save_path = 'D:/Image Process DNA/U_Net/Model';
+UNetResult_path = 'D:/Image Process DNA/U_Net/Patched Image Segmentation/Mask by UNet'; mkdir(UNetResult_path);
+
+BForiginal_path = 'D:/Image Process DNA/U_Net/Patched Image Segmentation/Original BF Images'; mkdir(BForiginal_path);
+NucProcessed_path = 'D:/Image Process DNA/U_Net/Patched Image Segmentation/Original BF Images'; mkdir(NucProcessed_path);
+
+% Load U-Net Model
+load(fullfile(Model_save_path, 'TrainedUnet_Optimized.mat'), 'net');
+
+% Parameters
+PatchSize = [128 128];
+Contrast_threshold = 0.041;
+Noise_threshold = 0.010;
+
+% Load Training Folders
+BF_files = dir(fullfile(BFinitial_path, '*.tif'));
+
+ImageCount = 0; % Image counter for saving
+
+for a = 1%:length(BF_files)
+
+    BF_path   = fullfile(BFinitial_path, BF_files(a).name);
+
+    if ~isfile(BF_path)
+        continue;
+    end
+
+    % Read and Preprocess
+    BF = imread(BF_path);
+
+    I_BF = im2double(BF);
+    img_contrast = std2(I_BF);
+    img_noise = mean(mean(stdfilt(I_BF)));
+
+    if img_noise > Noise_threshold
+        I_BF = imgaussfilt(I_BF, 0.8);
+    end
+    if img_contrast < Contrast_threshold
+        I_BF = imadjust(I_BF, [0.2 0.8], [0 1], 1);
+    end
+    I_processed = medfilt2(I_BF, [3 3]);
+
+    % Pad to Patch Size
+    [h, w] = size(I_processed);
+    pad_h = ceil(h / PatchSize(1)) * PatchSize(1) - h;
+    pad_w = ceil(w / PatchSize(2)) * PatchSize(2) - w;
+    I_pad = padarray(I_processed, [pad_h, pad_w], 'post');
+
+    segmented = zeros(size(I_pad), 'uint8');
+
+    % Predict Patch-by-Patch
+    for row = 1:PatchSize(1):size(I_pad,1)
+        for col = 1:PatchSize(2):size(I_pad,2)
+            patch = I_pad(row:row+PatchSize(1)-1, col:col+PatchSize(2)-1);
+            patch_input = reshape(patch, [PatchSize, 1]);  % Convert to HxWx1
+            prediction = semanticseg(patch_input, net);
+            mask = uint8(prediction == "Cell") * 255;
+            segmented(row:row+PatchSize(1)-1, col:col+PatchSize(2)-1) = mask;
+        end
+    end
+
+    % Crop to Original Size
+    final_mask = segmented(1:h, 1:w);
+
+    figure()
+    imshow(imoverlay(BF,final_mask))
+
+    % Save Result
+    % imwrite(final_mask, fullfile(UNetResult_path, sprintf('%d.tif', ImageCount)));
+    % ImageCount = ImageCount + 1;
+end
+
+%% Separation of Segmented Images
+
+% BF_files = dir(fullfile(BForiginal_path, '*.tif'));
+% Mask_files = dir(fullfile(UNetResult_path, '*.tif'));
+% Nuc_files = dir(fullfile(NucProcessed_path, '*.tif'));
+% 
+% ImgCount_Cell = 0; 
+% ImgCount_Mask = 0;
+% ImgCount_Nuc = 0;
+% 
+% for c = 1:length(BF_files)
+% 
+%     BF_path   = fullfile(BForiginal_path, BF_files(c).name);
+%     Mask_path = fullfile(UNetResult_path, Mask_files(c).name);
+%     Nuc_path  = fullfile(NucProcessed_path, Nuc_files(c).name);
+% 
+%     img_BF   = imread(BF_path);
+%     img_Mask = imread(Mask_path);
+%     img_Nuc  = imread(Nuc_path);
+% 
+%     label_mask = bwlabel(img_Mask);
+% 
+%     for d = 1:max(label_mask(:))
+% 
+%         [row_sep, col_sep] = find(label_mask);
+%         len = max(row_sep) - min(row_sep) + 1;
+%         breadth = max(col_sep) - min(col_sep) + 1;
+%         target1 = uint8(zeros([len breadth]));
+%         target2 = zeros([len breadth]);
+%         target3 = zeros([len breadth]);
+%         sy = min(col_sep) - 1;
+%         sx = min(row_sep) - 1;
+% 
+%         for e = 1:length(row_sep)
+%             x = row_sep(e) - sx;
+%             y = col_sep(e) - sy;
+%             target1(x, y) = img_BF(row_sep(e), col_sep(e));
+%             target2(x, y) = img_Mask(row_sep(e), col_sep(e));
+%             target3(x, y) = img_Nuc(row_sep(e), col_sep(e));
+%         end
+% 
+%         imwrite(target1, fullfile(Isolated_Single_path, sprintf('%d.tif', Img_count_isolated + 1)));
+%         Img_count_isolated = Img_count_isolated + 1;
+% 
+%     end
+% end
+% 
+% 
+% 
+% base_path = 'D:/Image Process DNA/Image Samples - Training - Copy';
+% folder_info = dir(base_path);
+% Trainings = {folder_info([folder_info.isdir] & ...
+%     ~ismember({folder_info.name}, {'.', '..'})).name};
+% 
+% ImageCount_S = 0;
+% 
+% U_net_BF_path = 'D:/Image Process DNA/U_Net/Training (Processed)';
+% U_net_mask_path = 'D:/Image Process DNA/U_Net/Mask';
+% 
+% Test_image_path = 'D:/Image Process DNA/U_Net/Test (Processed)';
+% UNetResult_path = 'D:/Image Process DNA/U_Net/Test_Result';
+% 
+% mkdir(U_net_BF_path); mkdir(U_net_mask_path); mkdir(Model_save_path); mkdir(UNetResult_path);
+
+%% Image Processing (Convolution mask)
+
+% for a = 1:length(Trainings)
+% 
+%     phase_dir = fullfile(base_path, Trainings{a}, 'Phase');
+%     blue_dir  = fullfile(base_path, Trainings{a}, 'Blue');
+% 
+%     phase_files = dir(fullfile(phase_dir, '*.tif'));
+%     names = {phase_files.name};
+%     nums = cellfun(@(x) sscanf(x, '%*[^0-9]%d', 1), names);
+%     [~, idx] = sort(nums);
+%     phase_files = phase_files(idx);
+% 
+%     for b = 1:length(phase_files)
+% 
+%         phase_filename = phase_files(b).name;
+%         blue_filename  = strrep(phase_filename, 'Phase', 'Blue');
+%         Img_1 = fullfile(phase_dir, phase_filename);
+%         Img_2 = fullfile(blue_dir, blue_filename);
+% 
+%         if ~isfile(Img_1) || ~isfile(Img_2)
+%             continue;
+%         end
+% 
+%     %% Reading images
+% 
+%         BF = imread(Img_1);
+%         Blue = imread(Img_2);
+% 
+%     %% Parameters (Convolution)
+% 
+%         CF1 = fspecial('sobel'); Trans_CF1 = CF1';
+%         Conv_Threshold_BF = 0.5;
+%         Contrast_threshold = 0.041;
+%         Noise_threshold = 0.010;
+%         BW_noise_threshold = 0.15;
+% 
+%     %% Cell segmentation
+% 
+%         I_BF = im2double(BF);
+%         img_contrast = std2(I_BF);
+%         img_noise = mean(mean(stdfilt(I_BF)));
+% 
+%         if img_noise > Noise_threshold
+%             I_BF = imgaussfilt(I_BF, 0.8);
+%         end
+% 
+%         if img_contrast < Contrast_threshold
+%             I_BF = imadjust(I_BF, [0.2 0.8], [0 1], 1);
+%         end 
+% 
+%         I_med_BF = medfilt2(I_BF, [3 3]);
+%         edges_BF = sqrt((conv2(I_med_BF, CF1, 'same')).^2 + (conv2(I_med_BF, Trans_CF1, 'same')).^2);
+%         T_BF = graythresh(edges_BF);
+%         bw_BF = imbinarize(edges_BF, T_BF * Conv_Threshold_BF);
+%         bw_noise = mean(mean(stdfilt(bw_BF)));
+% 
+%         if bw_noise > BW_noise_threshold
+%             bw_BF = bwareaopen(bw_BF, 50);
+%         end
+% 
+%         bw_BF_clean = imclose(bw_BF,strel('disk',5));
+%         bw_BF_clean = imopen(bw_BF_clean, ones(5,5));
+%         bw_BF_clean = imfill(bw_BF_clean,'holes');
+%         smoothed = imgaussfilt(im2double(bw_BF_clean), 8);
+%         smoothed = smoothed > 0.5;
+%         bw_BF_clean = imerode(smoothed,strel('disk',5));
+% 
+%         Resize_BF = imresize(I_med_BF, Target_size);
+%         Resize_mask = imresize(bw_BF_clean, Target_size, 'nearest');
+% 
+%         %% Checking the efficiency of cell segmentation
+% 
+%         % cent_num = regionprops(label_BF,'Centroid');
+%         % figure()
+%         % % imshow(BF)
+%         % % imshow(imoverlay(BF,label_BF))
+%         % % figure()
+%         % imshow(imoverlay(BF,bwperim(label_BF)))
+% 
+%         % for bb = 1:numel(cent_num)
+%         %     text(cent_num(bb).Centroid(1),cent_num(bb).Centroid(2),num2str(bb),'color','r')
+%         % end
+%         % pause(); close();
+% 
+%         %% Storing traing BF and mask images
+% 
+%         imwrite(Resize_BF,fullfile(U_net_BF_path,sprintf('%d.png', ImageCount_S +1)), ...
+%             'WriteMode','append');
+%         imwrite(uint8(Resize_mask)*255,fullfile(U_net_mask_path,sprintf('%d.png', ImageCount_S +1)), ...
+%             'WriteMode','append');
+% 
+%         ImageCount_S = ImageCount_S +1;    
+% 
+%     end
+% end
+
+
